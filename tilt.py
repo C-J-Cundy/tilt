@@ -34,6 +34,9 @@ class tilt(Optimizer):
     def __init__(self, params, lr=0.1, mu=0.9, tau=0.999, beta=0.9):
         defaults = dict(mu=mu, tau=tau, beta=beta)
         super(tilt, self).__init__(params, defaults)
+        self.mu = mu
+        self.tau = tau
+        self.beta = beta
 
     def step(self, closure=None):
         """Performs a single optimization step.
@@ -72,8 +75,10 @@ class tilt(Optimizer):
 
                 smoothed_g = self.tau * smoothed_g + (1 - self.tau) * grad
                 tilted_g = grad + self.beta * smoothed_g
-                velocity = self.mu * velocity - (1 - self.mu) * tilted_g
-                p.data.add(group['lr'], volcity)
+                self.velocity = self.mu * velocity - (1 - self.mu) * tilted_g
+                delta = self.velocity * group['lr']
+                p.data = torch.add(p.data, delta)
+#                p.data.add(p.data, delta)
 
                 # smoothed_g.mul_(rho).addcmul_(1 - rho, grad, grad)
                 # std = smoothed_g.add(eps).sqrt_()
