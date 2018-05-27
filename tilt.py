@@ -75,8 +75,8 @@ class tilt(Optimizer):
 
                 smoothed_g = self.tau * smoothed_g + (1 - self.tau) * grad
                 tilted_g = grad + self.beta * smoothed_g
-                self.velocity = self.mu * velocity - (1 - self.mu) * tilted_g
-                delta = self.velocity * group['lr']
+                velocity = self.mu * velocity - (1 - self.mu) * tilted_g
+                delta = velocity * group['lr']
                 p.data = torch.add(p.data, delta)
 #                p.data.add(p.data, delta)
 

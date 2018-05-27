@@ -14,7 +14,8 @@ import itertools
 # Training settings
 
 def run_mnist(optimizer_string='SGD', batch_size=64, test_batch_size=1000, epochs=10,
-              no_cuda=False, seed=1, log_interval=200, optim_params={})
+              no_cuda=False, seed=1, log_interval=200, optim_params={},
+              verbose=False):
     # Note defaults are SGD with momentum,
     # lr = 0.01, momentum coef = 0.5, seed=1, 
 
@@ -22,7 +23,7 @@ def run_mnist(optimizer_string='SGD', batch_size=64, test_batch_size=1000, epoch
 
     torch.manual_seed(seed)
     if cuda:
-        torch.cuda.manual_seed(args.seed)
+        torch.cuda.manual_seed(seed)
 
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
@@ -59,12 +60,6 @@ def run_mnist(optimizer_string='SGD', batch_size=64, test_batch_size=1000, epoch
             x = self.fc2(x)
             return F.log_softmax(x, dim=1)
 
-    model = Net()
-    if args.cuda:
-        model.cuda()
-
-
-
     def train(epoch, optimizer):
         model.train()
         avg_loss = 0
@@ -78,10 +73,11 @@ def run_mnist(optimizer_string='SGD', batch_size=64, test_batch_size=1000, epoch
             loss.backward()
             optimizer.step()
             avg_loss += loss.data[0]
-            if batch_idx % args.log_interval == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    epoch, batch_idx * len(data), len(train_loader.dataset),
-                    100. * batch_idx / len(train_loader), loss.data[0]))
+            if batch_idx % log_interval == 0:
+                if verbose:
+                    print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        epoch, batch_idx * len(data), len(train_loader.dataset),
+                        100. * batch_idx / len(train_loader), loss.data[0]))
         return avg_loss / len(train_loader)
 
 
@@ -99,22 +95,48 @@ def run_mnist(optimizer_string='SGD', batch_size=64, test_batch_size=1000, epoch
             correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
 
         test_loss /= len(test_loader.dataset)
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            test_loss, correct, len(test_loader.dataset),
-            100. * correct / len(test_loader.dataset)))
+        if verbose:
+            print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+                test_loss, correct, len(test_loader.dataset),
+                100. * correct / len(test_loader.dataset)))
         return test_loss
 
+    def test_acc():
+        model.eval()
+        test_loss = 0
+        correct = 0
+        for data, target in test_loader:
+            if cuda:
+                data, target = data.cuda(), target.cuda()
+            data, target = Variable(data, volatile=True), Variable(target)
+            output = model(data)
+            test_loss += F.nll_loss(output, target, size_average=False).data[0] # sum up batch loss
+            pred = output.data.max(1, keepdim=True)[1] # get the index of the max log-probability
+            correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
 
+        test_loss /= len(test_loader.dataset)
+        if verbose:
+            print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+                test_loss, correct, len(test_loader.dataset),
+                100. * correct / len(test_loader.dataset)))
+        return correct / 100
+
+
+    model = Net()
+    if cuda:
+        model.cuda()    
     if optimizer_string == 'SGD':
-        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=args.momentum)
+        lr = 0.01
+        momentum = 0.5
+        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
     else:
         optimizer = tilt([{'params': model.parameters(), 'lr': optim_params['lr']}],
-                         lr=1000, mu=optim_params['mu'], tau=optims['tau'],
+                         lr=1000, mu=optim_params['mu'], tau=optim_params['tau'],
                          beta=optim_params['beta'])
     
-    model = Net()
     train_losses = []
     test_losses = []
+    test_accs = []
     for epoch in range(1, epochs + 1):
         train_loss = train(epoch, optimizer)
         if np.isnan(train_loss):
@@ -122,5 +144,7 @@ def run_mnist(optimizer_string='SGD', batch_size=64, test_batch_size=1000, epoch
         else:
             train_losses.append(train_loss)
             test_losses.append(test())
+            test_accs.append(test_acc())
+            
 
-    return train_losses, test_losses
+    return train_losses, test_losses, test_accs

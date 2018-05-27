@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from torchvision import datasets, transforms
@@ -118,86 +120,80 @@ def test():
 
 
 #for index, lr in enumerate(np.logspace(-0.5, -5, 10)):
-mus = 1 - np.logspace(0, -3, 3)
-taus = 1 - np.logspace(-1, -5, 3)
-for index, lr in enumerate([0.01]):
-    print('Learning rate is {}'.format(lr))
-    SGD_train = []
-    SGD_test = []
-    tilt_train = []
-    tilt_test = []
+#mus = 1 - np.logspace(0, -10, 2)
+#taus = 1 - np.logspace(-1, -10, 2)
 
+# mus = [0.5, 0.0]         
+# taus = [0.999, 0]        
+# betas = [0, 0.1, 0.3, 1] 
+mus = [0.5, 0.0, 0.9]
+taus = [0.0, 0.99, 0.999]
+betas = [0.0, 1.0, 0.2]
+
+best_tilt_test_acc = 0
+best_SGD_test_acc = 0
+
+SGD_train = []
+SGD_test = []
+tilt_train = []
+tilt_test = []
+
+best_SGD_train = []
+best_SGD_test = []
+best_tilt_train = []
+best_tilt_test = []
+
+all_tilt_results = []
+
+for index, lr in enumerate([0.01, 0.001, 0.0001]):
+    print('Learning rate is {}'.format(lr))
     
-    for index1, (mu, tau) in enumerate(itertools.product(mus, taus)):
+    for index1, (mu, tau, beta) in enumerate(itertools.product(mus, taus, betas)):
+        tilt_train = []
+        tilt_test = []
         model = Net()
+        if args.cuda: model.cuda()
         optimizer = tilt([{'params': model.parameters(), 'lr': lr}])
         for epoch in range(1, args.epochs + 1):
             train_loss = train(epoch, optimizer)
             print(train_loss)
             if np.isnan(train_loss):
-                tilt_tests.append([5])
-                tilt_trains.append([5])
                 break
             tilt_train.append(train_loss)
             tilt_test.append(test())
-
-        if index1 == 0:
-            SGD_trains = [SGD_train]
-            SGD_tests = [SGD_test]
-            tilt_trains = [tilt_train]
-            tilt_tests = [tilt_test]
-        else:
-            SGD_trains.append(SGD_train)
-            tilt_trains.append(tilt_train)
-            SGD_tests.append(SGD_test)
-            tilt_tests.append(tilt_test)
-
+        all_tilt_results.append(((mu, tau, beta), tilt_test[-1]))
+        if tilt_test[-1] > best_tilt_test_acc:
+            best_tilt_train = tilt_train
+            best_tilt_test = tilt_test
+            best_tilt_test_acc = tilt_test[-1]
+            
     model = Net()
+    if args.cuda: model.cuda()    
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=args.momentum)
+    SGD_train = []
+    SGD_test = []
     for epoch in range(1, args.epochs + 1):
         train_loss = train(epoch, optimizer)
         if np.isnan(train_loss):
-            if index == 0:
-                SGD_trains = [[5]]
-                SGD_tests = [[5]]
-            else:
-                SGD_tests.append([5])
-                SGD_trains.append([5])                
-                
             break
         SGD_train.append(train_loss)
         SGD_test.append(test())
+    if SGD_test[-1] > best_SGD_test_acc:
+        best_SGD_train = SGD_train
+        best_SGD_test = SGD_test
+        best_SGD_test_acc = SGD_test[-1]
 
-    if index == 0:
-        SGD_trains = [SGD_train]
-        SGD_tests = [SGD_test]
-        tilt_trains = [tilt_train]
-        tilt_tests = [tilt_test]
-    else:
-        SGD_trains.append(SGD_train)
-        tilt_trains.append(tilt_train)
-        SGD_tests.append(SGD_test)
-        tilt_tests.append(tilt_test)
+plt.plot(range(args.epochs), best_SGD_train, color='k', marker = 'o', markersize=12,
+               linewidth=1, markerfacecolor='k', markeredgecolor='k', label='SGD Train')
 
-last_SGD_tests = np.argmin([x[-1] for x in SGD_tests])
-last_tilt_tests = np.argmin([x[-1] for x in SGD_tests])
-print('Optimal lr index for SGD was {}, but for tilt was {}'.format(last_SGD_tests, last_tilt_tests))
+plt.plot(range(args.epochs), best_SGD_test, color='k', marker = '+', markersize=12,
+               linewidth=1, markerfacecolor='k', markeredgecolor='k', label='SGD Test')
 
-SGD_train = SGD_trains[last_SGD_tests]
-SGD_test = SGD_tests[last_SGD_tests]
-tilt_train = tilt_trains[last_tilt_tests]
-tilt_test = tilt_tests[last_tilt_tests]
+plt.plot(range(args.epochs), best_tilt_train, color='r', marker = 'o', markersize=12,
+         linewidth=1, markerfacecolor='r', markeredgecolor='r', label='Tilt Train')
 
-plt.plot(range(args.epochs), SGD_train, color='k', marker = 'o', markersize=12,
-               linewidth=1, markerfacecolor='k', markeredgecolor='k')
-
-plt.plot(range(args.epochs), SGD_test, color='k', marker = '+', markersize=12,
-               linewidth=1, markerfacecolor='k', markeredgecolor='k')
-
-plt.plot(range(args.epochs), tilt_train, color='r', marker = 'o', markersize=12,
-         linewidth=1, markerfacecolor='r', markeredgecolor='r')
-
-plt.plot(range(args.epochs), tilt_test, color='r', marker = '+', markersize=12,
-         linewidth=1, markerfacecolor='r', markeredgecolor='r')
-
-plt.show()
+plt.plot(range(args.epochs), best_tilt_test, color='r', marker = '+', markersize=12,
+         linewidth=1, markerfacecolor='r', markeredgecolor='r', label='Tilt Test')
+plt.legend()
+plt.savefig('saved.png', dpi=1200)
+print([str(item) + '\t' for item in all_tilt_results])
